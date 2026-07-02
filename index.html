@@ -1013,6 +1013,12 @@
       });
     });
 
+    // 相手の先発集計
+    const opFirstMap = {};
+    records.forEach(r => {
+      if (r.opponentPokemon1) opFirstMap[r.opponentPokemon1] = (opFirstMap[r.opponentPokemon1] || 0) + 1;
+    });
+
     container.innerHTML = `
       <div class="stats-card">
         <div class="stats-card-label">勝率（全${total}件）</div>
@@ -1021,6 +1027,7 @@
       </div>
       ${pokeRankHTML('自分の選出 トップ5', myPokeMap, total)}
       ${pokeRankHTML('相手の選出 トップ5', opPokeMap, total)}
+      ${pokeRankHTML('相手の先発 トップ5', opFirstMap, total)}
     `;
   }
 </script>
