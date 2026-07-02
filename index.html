@@ -392,6 +392,89 @@
       white-space: nowrap;
     }
 
+    /* ── スタッツ ── */
+    .stats-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .stats-card-label {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .stats-winrate-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .stats-winrate-title {
+      font-size: 13px;
+      color: var(--muted);
+      flex-shrink: 0;
+      width: 80px;
+    }
+    .stats-winrate-detail {
+      font-size: 12px;
+      color: var(--muted);
+      flex-shrink: 0;
+      text-align: right;
+      width: 110px;
+    }
+    .stats-bar-wrap {
+      flex: 1;
+      height: 12px;
+      background: var(--bg);
+      border-radius: 6px;
+      overflow: hidden;
+      margin: 0 10px;
+      display: flex;
+    }
+    .stats-bar-win  { background: var(--win);  height: 100%; transition: width 0.4s ease; }
+    .stats-bar-lose { background: var(--lose); height: 100%; transition: width 0.4s ease; }
+    .stats-bar-draw { background: var(--draw); height: 100%; transition: width 0.4s ease; }
+
+    .stats-poke-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .stats-poke-name {
+      font-size: 13px;
+      width: 130px;
+      flex-shrink: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .stats-poke-bar-wrap {
+      flex: 1;
+      height: 10px;
+      background: var(--bg);
+      border-radius: 5px;
+      overflow: hidden;
+    }
+    .stats-poke-bar {
+      height: 100%;
+      background: var(--win);
+      border-radius: 5px;
+      transition: width 0.4s ease;
+    }
+    .stats-poke-meta {
+      font-size: 12px;
+      color: var(--muted);
+      flex-shrink: 0;
+      text-align: right;
+      width: 70px;
+    }
+
   </style>
 </head>
 <body>
@@ -404,6 +487,7 @@
 <nav class="tabs">
   <button class="tab-btn active" id="tabRecord" onclick="switchTab('record')">📝 記録</button>
   <button class="tab-btn" id="tabReview" onclick="switchTab('review')">📖 振り返り</button>
+  <button class="tab-btn" id="tabStats" onclick="switchTab('stats')">📊 スタッツ</button>
 </nav>
 
 <main id="recordView">
@@ -502,6 +586,12 @@
   </div>
 </main>
 
+<!-- スタッツ画面 -->
+<main id="statsView" style="display:none;">
+  <div class="review-status" id="statsStatus">読み込み中…</div>
+  <div id="statsContainer"></div>
+</main>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -510,24 +600,34 @@
 
   // ── タブ切り替え ──
   let reviewLoaded = false;
+  let statsLoaded = false;
 
   function switchTab(tab) {
     const recordView = document.getElementById('recordView');
     const reviewView = document.getElementById('reviewView');
-    const tabRecord = document.getElementById('tabRecord');
-    const tabReview = document.getElementById('tabReview');
+    const statsView  = document.getElementById('statsView');
+    const tabRecord  = document.getElementById('tabRecord');
+    const tabReview  = document.getElementById('tabReview');
+    const tabStats   = document.getElementById('tabStats');
+
+    recordView.style.display = 'none';
+    reviewView.style.display = 'none';
+    statsView.style.display  = 'none';
+    tabRecord.classList.remove('active');
+    tabReview.classList.remove('active');
+    tabStats.classList.remove('active');
 
     if (tab === 'record') {
       recordView.style.display = '';
-      reviewView.style.display = 'none';
       tabRecord.classList.add('active');
-      tabReview.classList.remove('active');
-    } else {
-      recordView.style.display = 'none';
+    } else if (tab === 'review') {
       reviewView.style.display = '';
-      tabRecord.classList.remove('active');
       tabReview.classList.add('active');
       if (!reviewLoaded) loadReviewData();
+    } else if (tab === 'stats') {
+      statsView.style.display = '';
+      tabStats.classList.add('active');
+      if (!statsLoaded) loadStatsData();
     }
   }
 
@@ -812,6 +912,116 @@
     t.textContent = msg;
     t.className = `toast ${type} show`;
     setTimeout(() => { t.classList.remove('show'); }, 3000);
+  }
+
+  // ── スタッツ ──
+  async function loadStatsData() {
+    const status = document.getElementById('statsStatus');
+    status.style.display = '';
+    status.textContent = '読み込み中…';
+
+    try {
+      const res = await fetch(GAS_URL + '?action=list');
+      const data = await res.json();
+
+      if (data.status !== 'ok' || data.records.length === 0) {
+        status.textContent = 'データがありません';
+        return;
+      }
+
+      status.style.display = 'none';
+      statsLoaded = true;
+      renderStats(data.records);
+    } catch (err) {
+      status.textContent = '読み込みに失敗しました';
+    }
+  }
+
+  function calcWinRate(records) {
+    const win  = records.filter(r => r.result === 'win').length;
+    const lose = records.filter(r => r.result === 'lose').length;
+    const draw = records.filter(r => r.result === 'draw').length;
+    const total = records.length;
+    return { win, lose, draw, total };
+  }
+
+  function winRateBarHTML(label, stats) {
+    const { win, lose, draw, total } = stats;
+    const winPct  = total ? (win  / total * 100).toFixed(1) : 0;
+    const losePct = total ? (lose / total * 100).toFixed(1) : 0;
+    const drawPct = total ? (draw / total * 100).toFixed(1) : 0;
+    const detail  = `${win}勝 ${lose}敗${draw > 0 ? ` ${draw}分` : ''} / ${winPct}%`;
+    return `
+      <div class="stats-winrate-row">
+        <span class="stats-winrate-title">${label}</span>
+        <div class="stats-bar-wrap">
+          <div class="stats-bar-win"  style="width:${winPct}%"></div>
+          <div class="stats-bar-draw" style="width:${drawPct}%"></div>
+          <div class="stats-bar-lose" style="width:${losePct}%"></div>
+        </div>
+        <span class="stats-winrate-detail">${detail}</span>
+      </div>`;
+  }
+
+  function pokeRankHTML(title, pokeMap, total) {
+    const sorted = Object.entries(pokeMap)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    const maxCount = sorted[0]?.[1] || 1;
+    const rows = sorted.map(([name, count]) => {
+      const pct     = (count / total * 100).toFixed(0);
+      const barPct  = (count / maxCount * 100).toFixed(0);
+      return `
+        <div class="stats-poke-row">
+          <span class="stats-poke-name">${name}</span>
+          <div class="stats-poke-bar-wrap">
+            <div class="stats-poke-bar" style="width:${barPct}%"></div>
+          </div>
+          <span class="stats-poke-meta">${count}回 (${pct}%)</span>
+        </div>`;
+    }).join('');
+    return `
+      <div class="stats-card">
+        <div class="stats-card-label">${title}</div>
+        ${rows}
+      </div>`;
+  }
+
+  function renderStats(records) {
+    const container = document.getElementById('statsContainer');
+    const total = records.length;
+    const recent10 = records.slice(0, 10);
+
+    // 勝率
+    const allStats    = calcWinRate(records);
+    const recentStats = calcWinRate(recent10);
+
+    // 自分の選出集計
+    const myPokeMap = {};
+    records.forEach(r => {
+      [r.myPokemon1, r.myPokemon2, r.myPokemon3].forEach(p => {
+        if (p) myPokeMap[p] = (myPokeMap[p] || 0) + 1;
+      });
+    });
+
+    // 相手の選出集計
+    const opPokeMap = {};
+    records.forEach(r => {
+      [r.opponentPokemon1, r.opponentPokemon2, r.opponentPokemon3,
+       r.opponentPokemon4, r.opponentPokemon5, r.opponentPokemon6].forEach(p => {
+        if (p) opPokeMap[p] = (opPokeMap[p] || 0) + 1;
+      });
+    });
+
+    container.innerHTML = `
+      <div class="stats-card">
+        <div class="stats-card-label">勝率（全${total}件）</div>
+        ${winRateBarHTML('全体', allStats)}
+        ${winRateBarHTML('直近10件', recentStats)}
+      </div>
+      ${pokeRankHTML('自分の選出 トップ5', myPokeMap, total)}
+      ${pokeRankHTML('相手の選出 トップ5', opPokeMap, total)}
+    `;
   }
 </script>
 
