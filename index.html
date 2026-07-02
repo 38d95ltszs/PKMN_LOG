@@ -966,7 +966,7 @@
   function pokeRankHTML(title, pokeMap, total) {
     const sorted = Object.entries(pokeMap)
       .sort((a, b) => b[1] - a[1])
-      .slice(0, 5);
+      .slice(0, 6);
     const maxCount = sorted[0]?.[1] || 1;
     const rows = sorted.map(([name, count]) => {
       const pct     = (count / total * 100).toFixed(0);
@@ -1025,9 +1025,9 @@
         ${winRateBarHTML('全体', allStats)}
         ${winRateBarHTML('直近10件', recentStats)}
       </div>
-      ${pokeRankHTML('自分の選出 トップ5', myPokeMap, total)}
-      ${pokeRankHTML('相手の選出 トップ5', opPokeMap, total)}
-      ${pokeRankHTML('相手の先発 トップ5', opFirstMap, total)}
+      ${pokeRankHTML('自分の選出 トップ6', myPokeMap, total)}
+      ${pokeRankHTML('相手の選出 トップ6', opPokeMap, total)}
+      ${pokeRankHTML('相手の先発 トップ6', opFirstMap, total)}
     `;
   }
 </script>
