@@ -240,6 +240,33 @@
     .toast.show { transform: translateX(-50%) translateY(0); }
     .toast.success { border-color: var(--win); color: var(--win); }
     .toast.error   { border-color: var(--lose); color: var(--lose); }
+    /* ── モードトグル ── */
+    .mode-toggle {
+      display: flex;
+      max-width: 480px;
+      margin: 12px auto 0;
+      padding: 0 16px;
+      gap: 8px;
+    }
+    .mode-btn {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--muted);
+      font-family: var(--font);
+      font-size: 13px;
+      font-weight: 700;
+      padding: 8px 0;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .mode-btn.active {
+      border-color: #a78bfa;
+      color: #a78bfa;
+      background: #a78bfa18;
+    }
+
     /* ── タブ ── */
     .tabs {
       display: flex;
@@ -484,6 +511,11 @@
   <h1>対戦ログ</h1>
 </header>
 
+<div class="mode-toggle">
+  <button class="mode-btn active" id="modeSingle" onclick="switchMode('single')">シングル</button>
+  <button class="mode-btn" id="modeDouble" onclick="switchMode('double')">ダブル</button>
+</div>
+
 <nav class="tabs">
   <button class="tab-btn active" id="tabRecord" onclick="switchTab('record')">📝 記録</button>
   <button class="tab-btn" id="tabReview" onclick="switchTab('review')">📖 振り返り</button>
@@ -511,10 +543,11 @@
   <!-- 自分の選出 -->
   <div class="card">
     <div class="card-label">自分の選出</div>
-    <div class="poke-grid">
+    <div class="poke-grid" id="myPokeGrid">
       <div class="poke-item"><div class="poke-num">1体目</div><input type="text" id="my1" placeholder="ポケモン名"></div>
       <div class="poke-item"><div class="poke-num">2体目</div><input type="text" id="my2" placeholder="ポケモン名"></div>
       <div class="poke-item"><div class="poke-num">3体目</div><input type="text" id="my3" placeholder="ポケモン名"></div>
+      <div class="poke-item" id="my4wrap" style="display:none;"><div class="poke-num">4体目</div><input type="text" id="my4" placeholder="ポケモン名"></div>
     </div>
   </div>
 
@@ -600,7 +633,38 @@
 
   // ── タブ切り替え ──
   let reviewLoaded = false;
-  let statsLoaded = false;
+  let statsLoaded  = false;
+  let currentMode  = 'single';
+
+  // ── モード切り替え ──
+  function switchMode(mode) {
+    currentMode = mode;
+    document.getElementById('modeSingle').classList.toggle('active', mode === 'single');
+    document.getElementById('modeDouble').classList.toggle('active', mode === 'double');
+
+    // 4体目入力欄の表示切り替え
+    const my4wrap    = document.getElementById('my4wrap');
+    const myPokeGrid = document.getElementById('myPokeGrid');
+    if (mode === 'double') {
+      my4wrap.style.display = '';
+      myPokeGrid.style.gridTemplateColumns = '1fr 1fr';
+    } else {
+      my4wrap.style.display = 'none';
+      myPokeGrid.style.gridTemplateColumns = '1fr 1fr 1fr';
+    }
+
+    // 振り返り・スタッツは再読み込み
+    reviewLoaded = false;
+    statsLoaded  = false;
+    document.getElementById('cardContainer').innerHTML = '';
+    document.getElementById('pager').style.display = 'none';
+    document.getElementById('sortToggle').style.display = 'none';
+    document.getElementById('statsContainer').innerHTML = '';
+    document.getElementById('reviewStatus').style.display = '';
+    document.getElementById('reviewStatus').textContent = '読み込み中…';
+    document.getElementById('statsStatus').style.display = '';
+    document.getElementById('statsStatus').textContent = '読み込み中…';
+  }
 
   function switchTab(tab) {
     const recordView = document.getElementById('recordView');
@@ -662,7 +726,7 @@
     status.textContent = '読み込み中…';
 
     try {
-      const res = await fetch(GAS_URL + '?action=list');
+      const res = await fetch(GAS_URL + '?action=list&mode=' + currentMode);
       const data = await res.json();
 
       if (data.status === 'ok') {
@@ -717,7 +781,7 @@
     const resultClass = record.result === 'win' ? 'win' : record.result === 'lose' ? 'lose' : 'draw';
     const resultLabel = record.result === 'win' ? '勝ち' : record.result === 'lose' ? '負け' : '引き分け';
 
-    const myPokes = [record.myPokemon1, record.myPokemon2, record.myPokemon3].filter(Boolean);
+    const myPokes = [record.myPokemon1, record.myPokemon2, record.myPokemon3, record.myPokemon4].filter(Boolean);
     const opPokes = [
       record.opponentPokemon1, record.opponentPokemon2, record.opponentPokemon3,
       record.opponentPokemon4, record.opponentPokemon5, record.opponentPokemon6,
@@ -853,10 +917,12 @@
     btn.textContent = '送信中…';
 
     const payload = {
+      mode:             currentMode,
       opponentName:     document.getElementById('opponentName').value,
       myPokemon1:       document.getElementById('my1').value,
       myPokemon2:       document.getElementById('my2').value,
       myPokemon3:       document.getElementById('my3').value,
+      myPokemon4:       currentMode === 'double' ? document.getElementById('my4').value : '',
       opponentPokemon1: document.getElementById('op1').value,
       opponentPokemon2: document.getElementById('op2').value,
       opponentPokemon3: document.getElementById('op3').value,
@@ -921,7 +987,7 @@
     status.textContent = '読み込み中…';
 
     try {
-      const res = await fetch(GAS_URL + '?action=list');
+      const res = await fetch(GAS_URL + '?action=list&mode=' + currentMode);
       const data = await res.json();
 
       if (data.status !== 'ok' || data.records.length === 0) {
@@ -999,7 +1065,7 @@
     // 自分の選出集計
     const myPokeMap = {};
     records.forEach(r => {
-      [r.myPokemon1, r.myPokemon2, r.myPokemon3].forEach(p => {
+      [r.myPokemon1, r.myPokemon2, r.myPokemon3, r.myPokemon4].forEach(p => {
         if (p) myPokeMap[p] = (myPokeMap[p] || 0) + 1;
       });
     });
@@ -1013,7 +1079,7 @@
       });
     });
 
-    // 相手の先発集計 
+    // 相手の先発集計
     const opFirstMap = {};
     records.forEach(r => {
       if (r.opponentPokemon1) opFirstMap[r.opponentPokemon1] = (opFirstMap[r.opponentPokemon1] || 0) + 1;
