@@ -39,10 +39,15 @@
       padding: 16px 20px;
       display: flex;
       align-items: center;
-      gap: 10px;
+      justify-content: space-between;
       position: sticky;
       top: 0;
       z-index: 10;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
     header .pokeball {
       width: 28px; height: 28px;
@@ -67,6 +72,41 @@
       font-weight: 700;
       letter-spacing: 0.03em;
     }
+    .key-btn {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    /* ── モーダル（あいことば設定） ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      z-index: 1000;
+    }
+    .modal-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      width: 100%;
+      max-width: 360px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      text-align: center;
+    }
+    .modal-title { font-size: 18px; font-weight: 700; }
+    .modal-desc { font-size: 13px; color: var(--muted); line-height: 1.5; }
 
     /* ── メインレイアウト ── */
     main {
@@ -126,7 +166,7 @@
     .upload-hint { font-size: 13px; color: var(--muted); }
 
     /* ── テキスト入力 ── */
-    input[type="text"], textarea {
+    input[type="text"], input[type="password"], textarea {
       width: 100%;
       background: var(--bg);
       border: 1px solid var(--border);
@@ -139,7 +179,7 @@
       transition: border-color 0.2s;
       -webkit-appearance: none;
     }
-    input[type="text"]:focus, textarea:focus {
+    input[type="text"]:focus, input[type="password"]:focus, textarea:focus {
       border-color: var(--accent);
     }
     textarea { resize: vertical; min-height: 80px; line-height: 1.6; }
@@ -240,6 +280,7 @@
     .toast.show { transform: translateX(-50%) translateY(0); }
     .toast.success { border-color: var(--win); color: var(--win); }
     .toast.error   { border-color: var(--lose); color: var(--lose); }
+
     /* ── モードトグル ── */
     .mode-toggle {
       display: flex;
@@ -506,9 +547,22 @@
 </head>
 <body>
 
+<!-- あいことば認証モーダル -->
+<div class="modal-overlay" id="authModal" style="display:none;">
+  <div class="modal-card">
+    <div class="modal-title">🔑 あいことばを入力</div>
+    <div class="modal-desc">アプリを利用するには事前に設定したあいことば（APIキー）が必要です。</div>
+    <input type="password" id="modalKeyInput" placeholder="あいことば">
+    <button class="submit-btn" onclick="saveApiKey()">認証する</button>
+  </div>
+</div>
+
 <header>
-  <div class="pokeball"></div>
-  <h1>対戦ログ</h1>
+  <div class="header-left">
+    <div class="pokeball"></div>
+    <h1>対戦ログ</h1>
+  </div>
+  <button class="key-btn" onclick="openAuthModal()">🔑 あいことば変更</button>
 </header>
 
 <div class="mode-toggle">
@@ -631,6 +685,46 @@
   // ── GAS Web API URL ──
   const GAS_URL = 'https://script.google.com/macros/s/AKfycbwmNmET6KylKNGy-VuAwCon0QtebSW8q42pRbA6UxLsDwWWZ6PPU45-w6htLiZvjQis/exec';
 
+  // ── あいことば（APIキー）管理 ──
+  let userApiKey = localStorage.getItem('poke_log_api_key') || '';
+
+  function checkAuth() {
+    if (!userApiKey) {
+      openAuthModal();
+      return false;
+    }
+    return true;
+  }
+
+  function openAuthModal() {
+    document.getElementById('modalKeyInput').value = userApiKey;
+    document.getElementById('authModal').style.display = 'flex';
+  }
+
+  function saveApiKey() {
+    const val = document.getElementById('modalKeyInput').value.trim();
+    if (!val) {
+      alert('あいことばを入力してください');
+      return;
+    }
+    userApiKey = val;
+    localStorage.setItem('poke_log_api_key', userApiKey);
+    document.getElementById('authModal').style.display = 'none';
+    showToast('🔑 あいことばを保存しました', 'success');
+    
+    // 再読み込みフラグをリセットして最新データを読み直す
+    reviewLoaded = false;
+    statsLoaded = false;
+    const activeTab = document.querySelector('.tab-btn.active').id;
+    if (activeTab === 'tabReview') loadReviewData();
+    if (activeTab === 'tabStats') loadStatsData();
+  }
+
+  // 初期起動時にあいことばチェック
+  window.addEventListener('DOMContentLoaded', () => {
+    checkAuth();
+  });
+
   // ── タブ切り替え ──
   let reviewLoaded = false;
   let statsLoaded  = false;
@@ -721,12 +815,13 @@
   }
 
   async function loadReviewData() {
+    if (!checkAuth()) return;
     const status = document.getElementById('reviewStatus');
     status.style.display = '';
     status.textContent = '読み込み中…';
 
     try {
-      const res = await fetch(GAS_URL + '?action=list&mode=' + currentMode);
+      const res = await fetch(`${GAS_URL}?action=list&mode=${currentMode}&apiKey=${encodeURIComponent(userApiKey)}`);
       const data = await res.json();
 
       if (data.status === 'ok') {
@@ -746,6 +841,7 @@
         document.getElementById('pager').style.display = '';
       } else {
         status.textContent = '読み込みエラー: ' + data.message;
+        if (data.message && data.message.includes('あいことば')) openAuthModal();
       }
     } catch (err) {
       status.textContent = '読み込みに失敗しました';
@@ -912,11 +1008,14 @@
 
   // 送信
   async function submitLog() {
+    if (!checkAuth()) return;
+
     const btn = document.getElementById('submitBtn');
     btn.disabled = true;
     btn.textContent = '送信中…';
 
     const payload = {
+      apiKey:           userApiKey, // 🔑 あいことば送信
       mode:             currentMode,
       opponentName:     document.getElementById('opponentName').value,
       myPokemon1:       document.getElementById('my1').value,
@@ -948,6 +1047,7 @@
         resetForm();
       } else {
         showToast('❌ エラー: ' + data.message, 'error');
+        if (data.message && data.message.includes('あいことば')) openAuthModal();
       }
     } catch (err) {
       showToast('❌ 送信に失敗しました', 'error');
@@ -982,15 +1082,22 @@
 
   // ── スタッツ ──
   async function loadStatsData() {
+    if (!checkAuth()) return;
     const status = document.getElementById('statsStatus');
     status.style.display = '';
     status.textContent = '読み込み中…';
 
     try {
-      const res = await fetch(GAS_URL + '?action=list&mode=' + currentMode);
+      const res = await fetch(`${GAS_URL}?action=list&mode=${currentMode}&apiKey=${encodeURIComponent(userApiKey)}`);
       const data = await res.json();
 
-      if (data.status !== 'ok' || data.records.length === 0) {
+      if (data.status !== 'ok') {
+        status.textContent = 'エラー: ' + data.message;
+        if (data.message && data.message.includes('あいことば')) openAuthModal();
+        return;
+      }
+
+      if (data.records.length === 0) {
         status.textContent = 'データがありません';
         return;
       }
